@@ -1,7 +1,47 @@
 use std::fs::File;
 use std::io::prelude::*;
 use std::str;
+use std::fs;
+use std::iter::FromIterator;
 use std::path::Path;
+
+struct FileCursor
+{
+    offset: usize,
+    data: Vec<u8>,
+}
+
+impl FileCursor {
+    fn from(path: String) -> FileCursor {
+        let data = fs::read(path).expect("Unable to read file");
+        FileCursor {
+            offset: 0,
+            data
+        }
+    }
+
+    // NOTE: currently returns a COPY of the content read,
+    // this can be a lot of memory occupied if the content is large.
+    fn read(self: &mut FileCursor, count: usize) -> Vec<u8> {
+        self.offset += count;
+        self.peek(self.offset - count)
+    }
+
+    // NOTE: currently returns a COPY of the content read,
+    // this can be a lot of memory occupied if the content is large.
+    fn peek(self: &FileCursor, count: usize) -> Vec<u8> {
+        Vec::from_iter(self.data[self.offset..count].iter().cloned())
+    }
+
+    fn skip(self: &mut FileCursor, count: usize) {
+        self.offset += count;
+    }
+}
+
+fn fmain() {
+    let mut cursor = FileCursor::from(String::from("./ba.mp4"));
+    let size = cursor.read(4);
+}
 
 fn main() {
     let path = Path::new("./ba.mp4");
@@ -36,8 +76,14 @@ fn main() {
         println!("Consumed chunk of size {}", csize);
     }
 
+    let _ = read_atom_chunk(&mut file);
     let atom = Atom::from(&mut file);
+
+    fmain();
 }
+
+
+
 
 struct Atom
 {
@@ -49,22 +95,30 @@ struct Atom
 
 impl Atom {
     fn from(file: &mut File) -> Atom {
-        let size = read_atom_chunk(&mut file);
-        let size = (4*3 as u32 - u32::from_be_bytes(size)) as usize;
-        
-        let kind = read_atom_chunk(&mut file);
+        let size = read_atom_chunk(file);
+        let kind = read_atom_chunk(file);
+        let size = (u32::from_be_bytes(size) - 4*3 as u32) as usize;
+        let chunk = consume_chunk(file, size);
 
-        let chunk = consume_chunk(&mut file, size);
+
 
         Atom {
             size: (size as u32),
-            kind: str::from_utf8(&kind).unwrap().to_string(),
+            kind: String::from(str::from_utf8(&kind).unwrap()),
             chunk,
             atoms: None
         }
     }
 }
 
+fn peek_atom_chunk(file: &mut File) -> [u8; 4] {
+    let mut out: [u8; 4] = [0, 0, 0, 0];
+    if file.read(&mut out).unwrap() == 4 {
+        out
+    } else {
+        panic!("Could not read next atom chunk")
+    }
+}
 
 fn read_atom_chunk(file: &mut File) -> [u8; 4] {
     let mut out: [u8; 4] = [0, 0, 0, 0];
