@@ -1,7 +1,7 @@
-use super::file_cursor::FileCursor;
+use super::{file_cursor::FileCursor, node::Node};
 use std::str;
 
-pub fn atomize(cursor: &mut FileCursor) -> Option<Vec<AtomHeader>> {
+pub fn atomize(cursor: &mut FileCursor) -> Option<Vec<Node<AtomHeader>>> {
     if cursor.consumed() {
         return None
     }
@@ -15,14 +15,19 @@ pub fn atomize(cursor: &mut FileCursor) -> Option<Vec<AtomHeader>> {
             cursor.move_to(hdr.off + hdr.pos);
             let apn = atomize(cursor);
 
-            let mut out = vec!(hdr);
-            if let Some(mut apc) = apc {
-                out.append(&mut apc);
+            let mut nodes = Node::from(hdr);
+            if let Some(apc) = apc {
+                for node in apc {
+                    nodes.add(node);
+                }
             }
+
+            let mut nodes = vec![nodes];
             if let Some(mut apn) = apn {
-                out.append(&mut apn);
+                nodes.append(&mut apn);
             }
-            Some(out)
+            
+            Some(nodes)
         },
         None => {
             println!("No header found at {}", cursor.offset);
@@ -51,7 +56,7 @@ impl AtomHeader {
 }
 
 // Allowed atom headers signatures
-const VSGI: [&str; 171] = [ "ainf", "avcn", "bloc", "bpcc", "buff", "bxml", "ccid", "cdef", "clip", "cmap", "co64", "coin", "colr", "crgn", "crhd", "cslg", "ctab", "ctts", "cvru", "dinf", "dref", "dsgd", "dstg", "edts", "elst", "emsg", "evti", "fdel", "feci", "fecr", "fiin", "fire", "fpar", "free", "frma", "ftyp", "gitn", "grpi", "hdlr", "hmhd", "hpix", "icnu", "ID32", "idat", "ihdr", "iinf", "iloc", "imap", "imif", "infe", "infu", "iods", "iphd", "ipmc", "ipro", "iref", "jP$20$20", "jp2c", "jp2h", "jp2i", "kmat", "leva", "load", "loop", "lrcu", "m7hd", "matt", "mdat", "mdhd", "mdia", "mdri", "meco", "mehd", "mere", "meta", "mfhd", "mfra", "mfro", "minf", "mjhd", "moof", "moov", "mvcg", "mvci", "mvex", "mvhd", "mvra", "nmhd", "ochd", "odaf", "odda", "odhd", "odhe", "odrb", "odrm", "odtt", "ohdr", "padb", "paen", "pclr", "pdin", "pitm", "pnot", "prft", "pssh", "res$20", "resc", "resd", "rinf", "saio", "saiz", "sbgp", "schi", "schm", "sdep", "sdhd", "sdtp", "sdvp", "segr", "senc", "sgpd", "sidx", "sinf", "skip", "smhd", "srmb", "srmc", "srpp", "ssix", "stbl", "stco", "stdp", "sthd", "strd", "stri", "stsc", "stsd", "stsg", "stsh", "stss", "stsz", "stts", "styp", "stz2", "subs", "swtc", "tfad", "tfdt", "tfhd", "tfma", "tfra", "tibr", "tiri", "tkhd", "traf", "trak", "tref", "trex", "trgr", "trik", "trun", "udta", "uinf", "UITS", "ulst", "url$20", "uuid", "vmhd", "vwdi", "xml$20", "xml$20" ];
+const VSGI: [&str; 171] = [ "ainf", "avcn", "bloc", "bpcc", "buff", "bxml", "ccid", "cdef", "clip", "cmap", "co64", "coin", "colr", "crgn", "crhd", "cslg", "ctab", "ctts", "cvru", "dinf", "dref", "dsgd", "dstg", "edts", "elst", "emsg", "evti", "fdel", "feci", "fecr", "fiin", "fire", "fpar", "free", "frma", "ftyp", "gitn", "grpi", "hdlr", "hmhd", "hpix", "icnu", "ID32", "idat", "ihdr", "iinf", "iloc", "imap", "imif", "infe", "infu", "iods", "iphd", "ipmc", "ipro", "iref", "jP$20$20", "jp2c", "jp2h", "jp2i", "kmat", "leva", "load", "loop", "lrcu", "m7hd", "matt", "mdat", "mdhd", "mdia", "mdri", "meco", "mehd", "mere", "meta", "mfhd", "mfra", "mfro", "minf", "mjhd", "moof", "moov", "mvcg", "mvci", "mvex", "mvhd", "mvra", "nmhd", "ochd", "odaf", "odda", "odhd", "odhe", "odrb", "odrm", "odtt", "ohdr", "padb", "paen", "pclr", "pdin", "pitm", "pnot", "prft", "pssh", "res$20", "resc", "resd", "rinf", "saio", "saiz", "sbgp", "schi", "schm", "sdep", "sdhd", "sdtp", "sdvp", "segr", "senc", "sgpd", "sidx", "sinf", "skip", "smhd", "srmb", "srmc", "srpp", "ssix", "stbl", "stco", "stdp", "sthd", "strd", "stri", "stsc", "stsd", "stsg", "stsh", "stss", "stsz", "stts", "styp", "stz2", "subs", "swtc", "tfad", "tfdt", "tfhd", "tfma", "tfra", "tibr", "tiri", "tkhd", "traf", "trak", "tref", "trex", "trgr", "trik", "trun", "udta", "uinf", "UITS", "ulst", "url", "uuid", "vmhd", "vwdi", "xml$20", "xml" ];
 
 fn valid(sig: &String) -> bool {
     VSGI.iter().any(|i| sig == i)
