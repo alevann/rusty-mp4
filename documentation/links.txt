@@ -1,0 +1,20 @@
+QT fm specs:
+https://developer.apple.com/library/archive/documentation/QuickTime/QTFF/QTFFChap2/qtff2.html#//apple_ref/doc/uid/TP40000939-CH204-56313
+
+MPEG-4 fm V2:
+https://www.loc.gov/preservation/digital/formats/fdd/fdd000155.shtml
+
+MPEG4:
+https://mpeg.chiariglione.org/standards/mpeg-4/mp4-file-format
+
+MP4 atom list:
+https://cconcolato.github.io/mp4ra/atoms.html
+
+MP4 types or something:
+https://www.ftyps.com/#2
+
+Nice tutorial thingy:
+http://matthewekenstedt.com/73-06/reverse-engineering-a-file-format/
+
+Random wiki:
+https://wiki.multimedia.cx/index.php/QuickTime_container
