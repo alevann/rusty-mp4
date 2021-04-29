@@ -1,14 +1,13 @@
-use std::fs::File;
-use std::io::prelude::*;
-use std::str;
 use std::fs;
 use std::iter::FromIterator;
-use std::path::Path;
+use std::fmt;
+use std::str;
 
 struct FileCursor
 {
     offset: usize,
     data: Vec<u8>,
+    count: usize
 }
 
 impl FileCursor {
@@ -16,124 +15,143 @@ impl FileCursor {
         let data = fs::read(path).expect("Unable to read file");
         FileCursor {
             offset: 0,
+            count: data.len(),
             data
         }
     }
 
-    // NOTE: currently returns a COPY of the content read,
-    // this can be a lot of memory occupied if the content is large.
-    fn read(self: &mut FileCursor, count: usize) -> Vec<u8> {
+    fn read_exact<const S: usize>(&mut self) -> [u8; S] {
+        let mut out = [0 as u8; S];
+        for (i, v) in self.data[self.offset..self.offset+S]
+                            .iter().cloned().enumerate() {
+            out[i] = v;
+        }
+        self.offset += S;
+        out
+    }
+
+    fn read(&mut self, count: usize) -> Vec<u8> {
+        let out = Vec::from_iter(
+            self.data[self.offset..self.offset+count].iter().cloned());
         self.offset += count;
-        self.peek(self.offset - count)
+        out
     }
 
-    // NOTE: currently returns a COPY of the content read,
-    // this can be a lot of memory occupied if the content is large.
-    fn peek(self: &FileCursor, count: usize) -> Vec<u8> {
-        Vec::from_iter(self.data[self.offset..count].iter().cloned())
-    }
-
-    fn skip(self: &mut FileCursor, count: usize) {
+    fn skip(&mut self, count: usize) -> usize {
         self.offset += count;
+        self.offset
     }
 }
-
-fn fmain() {
-    let mut cursor = FileCursor::from(String::from("./ba.mp4"));
-    let size = cursor.read(4);
-}
-
-fn main() {
-    let path = Path::new("./ba.mp4");
-
-    let mut file = match File::open(&path) {
-        Err(err) => panic!("Could not open {}: {}", path.display(), err),
-        Ok(file) => file
-    };
-
-    let asize = read_atom_chunk(&mut file);
-    println!("Atom size: {} ({:X?})", u32::from_be_bytes(asize), asize);
-
-    let atype = read_atom_chunk(&mut file);
-    println!("Atom type: {} ({:X?})", str::from_utf8(&atype).unwrap(), atype);
-
-    let astyp = read_atom_chunk(&mut file);
-    println!("Atom sub-type: {} ({:X?})", str::from_utf8(&astyp).unwrap(), astyp);
-    
-    let chunk = consume_chunk(&mut file, (u32::from_be_bytes(asize) - 4*3 as u32) as usize);
-    println!("Consumed chunk: {:X?}", chunk);
-
-
-    for i in 0..1 {
-        let asize = read_atom_chunk(&mut file);
-        println!("Atom[{}] size: {} ({:X?})", i, u32::from_be_bytes(asize), &asize);
-
-        let atype = read_atom_chunk(&mut file);
-        println!("Atom[{}] type: {} ({:X?})", i, str::from_utf8(&atype).unwrap(), &atype);
-
-        let csize = (u32::from_be_bytes(asize) - 4*3 as u32) as usize;
-        let chunk = consume_chunk(&mut file, csize);
-        println!("Consumed chunk of size {}", csize);
-    }
-
-    let _ = read_atom_chunk(&mut file);
-    let atom = Atom::from(&mut file);
-
-    fmain();
-}
-
-
-
 
 struct Atom
 {
-    chunk: Vec<u8>,
-    size: u32,
+    offset: usize,
+    size: usize,
     kind: String,
-    atoms: Option<Vec<Atom>>
+    chunk: Vec<u8>
+}
+
+impl fmt::Debug for Atom {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Atom")
+         .field("offset", &self.offset)
+         .field("size", &self.size)
+         .field("kind", &self.kind)
+         .field("chunk (len)", &self.chunk.len())
+         .finish()
+    }
+
 }
 
 impl Atom {
-    fn from(file: &mut File) -> Atom {
-        let size = read_atom_chunk(file);
-        let kind = read_atom_chunk(file);
-        let size = (u32::from_be_bytes(size) - 4*3 as u32) as usize;
-        let chunk = consume_chunk(file, size);
+    fn from_cursor(cursor: &mut FileCursor) -> Atom {
+        let offset = cursor.offset;
 
+        let size = cursor.read_exact::<4>();
+        println!("Atom size: {} ({:X?})", u32::from_be_bytes(size), size);
 
+        let kind = cursor.read_exact::<4>();
+        println!("Atom kind: {} ({:X?})", str::from_utf8(&kind).unwrap(), kind);
+
+        let size = u32::from_be_bytes(size) as usize - 4*2;
+        let chunk = cursor.read(size);
+        println!("Atom chunk size: {} (now at offset {} out of {} total)\n", size, cursor.offset, cursor.count);
+        Atom {
+            offset,
+            size,
+            kind: String::from(str::from_utf8(&kind).unwrap()),
+            chunk
+        }
+    }
+
+    fn from_buffer(buffer: &Vec<u8>, offset: usize) -> Atom {
+        let mut size: [u8; 4] = [0, 0, 0, 0];
+        for i in 0..4 {
+            size[i] = buffer[offset+i];
+        }
+        let mut kind: [u8; 4] = [0, 0, 0, 0];
+        for i in 4..8 {
+            kind[i-4] = buffer[offset+i];
+        }
+        let size = u32::from_be_bytes(size) as usize;
+        let chunk = &buffer[8..size - 4*2];
 
         Atom {
-            size: (size as u32),
+            offset,
+            size,
             kind: String::from(str::from_utf8(&kind).unwrap()),
-            chunk,
-            atoms: None
+            chunk: chunk.iter().cloned().collect()
+        }
+    }
+
+    fn parse_subatoms(&self) -> Option<Vec<Atom>> {
+        match self.kind.as_str() {
+            "ftyp" => { println!("ftyp atom is not supported yet"); None },
+            "moov" => self.parse_moov(),
+            "mdat" => { println!("mdat atom is not supported yet"); None },
+            "mvhd" => { println!("mdat atom is not supported yet"); None },
+            _ => panic!("unknown atom: {}", self.kind)
+        }
+    }
+
+    fn parse_moov(&self) -> Option<Vec<Atom>> {
+        if self.chunk.is_empty() {
+            None
+        } else {
+            let mut atoms: Vec<Atom> = Vec::new();
+            let mut offset = 0 as usize;
+
+            while offset < self.size {
+                println!("offset: {} - size: {}", offset, self.size);
+                let atom = Atom::from_buffer(&self.chunk, offset);
+                offset += atom.size;
+                atoms.push(atom);
+            }
+
+            Some(atoms)
         }
     }
 }
 
-fn peek_atom_chunk(file: &mut File) -> [u8; 4] {
-    let mut out: [u8; 4] = [0, 0, 0, 0];
-    if file.read(&mut out).unwrap() == 4 {
-        out
-    } else {
-        panic!("Could not read next atom chunk")
+fn parse_file(file: String) {
+    let mut cursor = FileCursor::from(format!("./data/{}.mp4", file));
+    println!("Parsing file: {}", file);
+    for i in 1..4 {
+        println!("--- Atom {} ---", i);
+        
+        let atom = Atom::from_cursor(&mut cursor);
+        println!("{:#?}", atom);
+
+        for atom in atom.parse_subatoms() {
+            println!("{:#?}", atom);
+        }
     }
 }
 
-fn read_atom_chunk(file: &mut File) -> [u8; 4] {
-    let mut out: [u8; 4] = [0, 0, 0, 0];
-    if file.read(&mut out).unwrap() == 4 {
-        out
-    } else {
-        panic!("Could not read next atom chunk")
-    }
-}
+fn main() {
+    let files = ["ba", "cob_bam"];
 
-fn consume_chunk(file: &mut File, remainder: usize) -> Vec<u8> {
-    let mut v = vec![0 as u8; remainder];
-    if file.read(&mut v).unwrap() == remainder {
-        v
-    } else {
-        panic!("Could not consume the chunk (asked for {})", remainder)
+    for file in files.iter() {
+        parse_file(file.to_string());
     }
 }
