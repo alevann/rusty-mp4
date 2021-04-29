@@ -1,20 +1,33 @@
 use super::file_cursor::FileCursor;
 use std::str;
 
-pub fn atomize(cursor: &mut FileCursor) {
+pub fn atomize(cursor: &mut FileCursor) -> Option<Vec<AtomHeader>> {
     if cursor.consumed() {
-        return
+        return None
     }
 
     match AtomHeader::from_cursor(cursor) {
         Some(hdr) => {
             print!("Found a header starting at {}: {:#?}\nChecking next 8 bytes... ", hdr.pos, hdr);
-            atomize(cursor);
+            let apc = atomize(cursor);
+            
             println!("Moving to check for a header starting at {}", hdr.off);
             cursor.move_to(hdr.off + hdr.pos);
-            atomize(cursor);
+            let apn = atomize(cursor);
+
+            let mut out = vec!(hdr);
+            if let Some(mut apc) = apc {
+                out.append(&mut apc);
+            }
+            if let Some(mut apn) = apn {
+                out.append(&mut apn);
+            }
+            Some(out)
         },
-        None => println!("No header found at {}", cursor.offset),
+        None => {
+            println!("No header found at {}", cursor.offset);
+            None
+        },
     }
 }
 
