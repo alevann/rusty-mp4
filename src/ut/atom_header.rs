@@ -35,7 +35,7 @@ pub fn atomize(cursor: &mut FileCursor, parent: Option<&Node<AtomHeader>>) -> Op
             println!("Found a valid header at {}", hdr.pos);
             println!("Looking for neighboor nodes of {} (at {})...", hdr.sig, hdr.off);
             cursor.move_to(hdr.pos+hdr.off);
-            let ngh = atomize(cursor, None);
+            let ngh = atomize(cursor, parent);
             
             if let Some(_) = ngh {
                 println!("Found a neighboor of {} at {}", hdr.sig, hdr.off);
