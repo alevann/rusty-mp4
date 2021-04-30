@@ -3,7 +3,7 @@ use std::fmt::{self, Debug};
 pub struct Node<T>
 {
     nodes: Vec<Node<T>>,
-    data: Option<T>
+    pub data: Option<T>
 }
 
 impl <T> Node<T> {
@@ -30,6 +30,15 @@ impl <T> Node<T> {
             self.add(node)
         }
         self
+    }
+
+    pub fn apply_recursive<F>(&self, apply: &F) where F : Fn(&T) {
+        if let Some(data) = &self.data {
+            apply(data);
+        }
+        for node in &self.nodes {
+            node.apply_recursive(apply);
+        }
     }
 }
 

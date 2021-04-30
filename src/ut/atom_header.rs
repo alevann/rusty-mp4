@@ -1,7 +1,79 @@
 use super::{file_cursor::FileCursor, node::Node};
 use std::str;
 
-pub fn atomize(cursor: &mut FileCursor) -> Option<Vec<Node<AtomHeader>>> {
+
+pub fn atomize(cursor: &mut FileCursor, parent: Option<&Node<AtomHeader>>) -> Option<Vec<Node<AtomHeader>>> {
+    if cursor.consumed() {
+        println!("EOF");
+        return None
+    }
+
+    let mof = if let Some(parent) = parent {
+        if let Some(data) = &parent.data {
+            data.off
+        } else {
+            cursor.count
+        }
+    } else {
+        cursor.count
+    };
+
+    println!("Looking for a header at {}", cursor.offset);
+    match AtomHeader::from_cursor(cursor) {
+        None => {
+            println!("Could not find a valid header at {}", cursor.offset-8);
+            None
+        },
+        Some(hdr) => {
+            if hdr.pos >= mof {
+                println!("Header {} at {} is >= than {} which is the max value", hdr.sig, hdr.pos, mof);
+                return None
+            } else {
+                println!("Inline {} where max {}", hdr.pos, mof);
+            }
+
+            println!("Found a valid header at {}", hdr.pos);
+            println!("Looking for neighboor nodes of {} (at {})...", hdr.sig, hdr.off);
+            cursor.move_to(hdr.pos+hdr.off);
+            let ngh = atomize(cursor, None);
+            
+            if let Some(_) = ngh {
+                println!("Found a neighboor of {} at {}", hdr.sig, hdr.off);
+            } else {
+                println!("No neighboors found at {} ({})", hdr.off, hdr.sig);
+            }
+
+            let mut nodes = Node::from(hdr.clone());
+
+            println!("Starting to look for children of {} (from {} up to {})", hdr.sig, hdr.pos, hdr.pos+hdr.off);
+            cursor.move_to(hdr.pos+8);
+            let chd = atomize(cursor, Some(&nodes));
+
+            let mut khd: Option<Vec<Node<AtomHeader>>> = None;
+            if let Some(chd) = chd {
+                println!("Found children/s of {} (count: {})", hdr.sig, chd.len());
+                khd = Some(chd);
+            } else {
+                println!("No neighboors found at {} ({})", hdr.off, hdr.sig);
+            }
+
+            if let Some(chd) = khd {
+                for node in chd {
+                    nodes.add(node);
+                }
+            }
+
+            let mut nodes = vec![nodes];
+            if let Some(mut ngh) = ngh {
+                nodes.append(&mut ngh);
+            }
+            
+            Some(nodes)
+        }
+    }
+}
+
+pub fn _atomize(cursor: &mut FileCursor) -> Option<Vec<Node<AtomHeader>>> {
     if cursor.consumed() {
         return None
     }
@@ -9,11 +81,11 @@ pub fn atomize(cursor: &mut FileCursor) -> Option<Vec<Node<AtomHeader>>> {
     match AtomHeader::from_cursor(cursor) {
         Some(hdr) => {
             print!("Found a header starting at {}: {:#?}\nChecking next 8 bytes... ", hdr.pos, hdr);
-            let apc = atomize(cursor);
-            
+            let apc = _atomize(cursor);
+
             println!("Moving to check for a header starting at {}", hdr.off);
             cursor.move_to(hdr.off + hdr.pos);
-            let apn = atomize(cursor);
+            let apn = _atomize(cursor);
 
             let mut nodes = Node::from(hdr);
             if let Some(apc) = apc {
@@ -37,11 +109,12 @@ pub fn atomize(cursor: &mut FileCursor) -> Option<Vec<Node<AtomHeader>>> {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct AtomHeader
 {
-    off: usize,
-    pos: usize,
-    sig: String,
+    pub off: usize,
+    pub pos: usize,
+    pub sig: String,
 }
 
 impl AtomHeader {
