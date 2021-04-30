@@ -39,7 +39,11 @@ impl FileCursor {
         out
     }
 
-    pub fn move_to(&mut self, to: usize) {
+    pub fn abs_move(&mut self, to: usize) {
         self.offset = to
+    }
+
+    pub fn rel_move(&mut self, to: usize) {
+        self.offset += to
     }
 }

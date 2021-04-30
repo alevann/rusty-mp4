@@ -5,17 +5,17 @@ pub fn describe(cursor: &mut FileCursor, mof: usize) -> Option<Vec<Node<AtomDesc
     if cursor.consumed() {
         return None
     }
-
+    
     let descriptor = AtomDescriptor::from_cursor(cursor)?;
     if descriptor.pos >= mof {
         return None
     }
 
-    cursor.move_to(descriptor.pos+descriptor.off);
+    cursor.abs_move(descriptor.pos+descriptor.off);
     let neighboors = describe(cursor, mof);
 
-    cursor.move_to(descriptor.pos+8);
-    let children = describe(cursor, descriptor.off);
+    cursor.abs_move(descriptor.pos+8);
+    let children = describe(cursor, descriptor.pos+descriptor.off);
 
     let mut node = Node::from(descriptor);
     if let Some(children) = children {
